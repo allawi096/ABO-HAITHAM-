@@ -906,7 +906,10 @@
         <div class="form-group"><label>المتبقي</label><input type="number" id="inv-rem" readonly style="background:#E7E5E4;"></div>
         <div class="form-group"><label>ملاحظات / نص إضافي على الفاتورة</label><textarea id="inv-notes" rows="3" placeholder="اكتب أي ملاحظة أو تفاصيل إضافية تظهر في الفاتورة..."></textarea></div>
 
-        <button class="btn-primary" id="inv-save-btn" onclick="saveInvoice()">اعتماد الحفظ</button>
+        <div class="flex-gap">
+          <button class="btn-primary" id="inv-save-btn" style="flex:1;" onclick="saveInvoice()">اعتماد الحفظ</button>
+          <button class="btn-outline" id="inv-cancel-btn" style="flex:1; display:none;" onclick="cancelInvoiceEdit()">↩️ تراجع عن التعديل</button>
+        </div>
       </div>
     </div>
 
@@ -1542,6 +1545,7 @@
       document.getElementById('inv-discount').value = 0;
       document.getElementById('inv-paid').value = '';
       document.getElementById('inv-save-btn').innerText = 'اعتماد الحفظ';
+      document.getElementById('inv-cancel-btn').style.display = 'none';
       tempCartItems = [];
       renderCartTable();
       document.getElementById('add-inv-form').style.display = 'block';
@@ -1565,8 +1569,24 @@
       document.getElementById('inv-paid').value = inv.paid;
       calcInvRemaining();
       document.getElementById('inv-save-btn').innerText = '💾 حفظ التعديل';
+      document.getElementById('inv-cancel-btn').style.display = 'block';
       document.getElementById('add-inv-form').style.display = 'block';
       document.getElementById('page-invoices').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function cancelInvoiceEdit() {
+      editingInvoiceId = null;
+      tempCartItems = [];
+      document.getElementById('inv-date').value = todayStr;
+      document.getElementById('inv-party').value = '';
+      document.getElementById('inv-party-phone').value = '';
+      document.getElementById('inv-notes').value = '';
+      document.getElementById('inv-discount').value = 0;
+      document.getElementById('inv-paid').value = '';
+      document.getElementById('inv-save-btn').innerText = 'اعتماد الحفظ';
+      document.getElementById('inv-cancel-btn').style.display = 'none';
+      renderCartTable();
+      document.getElementById('add-inv-form').style.display = 'none';
     }
 
     function getAvailableQtyForInvoiceCart(prodId) {
@@ -1745,6 +1765,7 @@
         alert("تم الحفظ بنجاح!");
       }
       document.getElementById('inv-save-btn').innerText = 'اعتماد الحفظ';
+      document.getElementById('inv-cancel-btn').style.display = 'none';
       toggleElement('add-inv-form');
       await loadDataFromSupabase();
       for (let pid of touchedIds) { await recalcProductCostFromPurchases(pid); }
@@ -2653,7 +2674,7 @@
       if(purC) purC.innerHTML = '';
       const searchInv = (document.getElementById('search-inv-input')?.value || '').toLowerCase();
 
-      invoices.forEach(inv => {
+      invoices.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id).forEach(inv => {
         if (!searchInv || (inv.party || '').toLowerCase().includes(searchInv) || String(inv.id).includes(searchInv) || invoiceNumber(inv).toLowerCase().includes(searchInv)) {
           const invNum = invoiceNumber(inv);
           const itemsLine = (inv.items || []).map(it => `${it.prodName} — ${it.qty} × ${Number(it.price).toFixed(2)} ر.س`).join('<br>');
