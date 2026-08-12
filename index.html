@@ -32,7 +32,7 @@
       --gold: #D4AF37;
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; touch-action: manipulation; }
     body {
       font-family: 'Tajawal', sans-serif;
       background-color: var(--bg);
@@ -482,6 +482,7 @@
       padding: 16px;
     }
     .modal.active { display: flex; }
+    #confirm-modal { z-index: 3000; }
     .modal-content {
       background: #FFF;
       color: var(--text);
@@ -613,9 +614,47 @@
     .badge-role.viewer { background: #E0E7FF; color: #3730A3; }
 
     .empty-hint { text-align:center; color: var(--muted); font-weight:700; padding: 20px 0; }
+
+    body.hide-financials .profit-card h1,
+    body.hide-financials .stat-box strong,
+    body.hide-financials .pill,
+    body.hide-financials .fin-box,
+    body.hide-financials .stock-info span,
+    body.hide-financials #report-summary-box strong {
+      filter: blur(7px);
+      user-select: none;
+      transition: filter .15s ease;
+    }
+
+    .toast-msg {
+      background: #FFF;
+      color: var(--text);
+      border: 1.5px solid var(--border);
+      border-right: 5px solid var(--primary);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: 800;
+      font-size: 0.9rem;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      pointer-events: auto;
+      animation: toastIn .2s ease-out;
+    }
+    .toast-msg.toast-success { border-right-color: var(--success); }
+    .toast-msg.toast-error { border-right-color: var(--danger); }
+    .toast-msg button {
+      background: none; border: none; color: var(--muted);
+      font-weight: 900; font-size: 1.05rem; cursor: pointer;
+      padding: 0 4px; width: auto; line-height: 1;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
+
+  <div id="toast-container" style="position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:8px; align-items:stretch; width:92%; max-width:420px; pointer-events:none;"></div>
 
   <!-- صفحة تسجيل الدخول -->
   <div id="page-login">
@@ -648,6 +687,7 @@
       <span class="role-badge" id="header-role-badge"></span>
     </div>
     <div class="header-icons">
+      <button class="icon-btn" id="fin-toggle-btn" title="إخفاء/إظهار البيانات المالية" onclick="toggleFinancialVisibility()">👁️</button>
       <button class="icon-btn" title="الإعدادات" onclick="openSettingsModal()">⚙️</button>
       <button class="icon-btn" title="تسجيل الخروج" onclick="logout()">🚪</button>
     </div>
@@ -720,7 +760,7 @@
         <button class="top-tab-btn active" id="btn-st-tab-gen" onclick="switchSettingsTab('gen', this)">الإعدادات والألوان</button>
         <button class="top-tab-btn admin-only" id="btn-st-tab-invoice" onclick="switchSettingsTab('invoice', this)">🧾 بيانات الفاتورة</button>
         <button class="top-tab-btn admin-only" id="btn-st-tab-users" onclick="switchSettingsTab('users', this)">👥 إدارة المستخدمين</button>
-        <button class="top-tab-btn admin-only" id="btn-st-tab-audit" onclick="switchSettingsTab('audit', this)">📜 سجل الحركة</button>
+        <button class="top-tab-btn" id="btn-st-tab-audit" onclick="switchSettingsTab('audit', this)">📜 سجل الحركة</button>
       </div>
 
       <div id="st-tab-content-gen" class="st-tab-pane active">
@@ -745,9 +785,18 @@
           <div class="form-group"><label>اسم المتجر</label><input type="text" id="set-app-name" value="🌴 نواة التمر"></div>
           <div class="form-group"><label>الوصف</label><input type="text" id="set-app-sub" value="محاسبة تجارة التمور"></div>
           <hr class="divider">
+          <div class="form-group"><label>⚠️ الحد الأدنى لتنبيه نقص المخزون (كمية أو أقل)</label><input type="number" id="set-low-stock-threshold" value="5" min="0"></div>
+          <hr class="divider">
           <h4 style="margin:0 0 10px 0; color:var(--primary); text-align:center;">🎨 هوية الألوان</h4>
           <div class="theme-grid" id="theme-grid"></div>
           <button class="btn-primary" style="margin-top:6px;" onclick="saveAppSettings()">💾 حفظ الإعدادات</button>
+
+          <hr class="divider">
+          <h4 style="margin:0 0 8px 0; color:var(--primary); text-align:center;">💾 النسخ الاحتياطي</h4>
+          <p style="font-size:0.82rem; color:var(--muted); text-align:center; margin-bottom:10px;">حمّل نسخة من كل بياناتك (المخزون، الفواتير، المصروفات، الدفعات) بملف واحد، واحتفظ فيه بجهازك كأمان إضافي.</p>
+          <button class="btn-primary" style="margin-bottom:8px;" onclick="downloadBackup()">⬇️ تنزيل نسخة احتياطية الآن</button>
+          <input type="file" id="backup-file-input" accept="application/json" style="display:none;" onchange="handleBackupImport(event)">
+          <button class="btn-outline" onclick="triggerBackupImport()">⬆️ استعادة من نسخة احتياطية</button>
 
           <hr class="divider">
           <h4 style="margin:0 0 8px 0; color:var(--danger); text-align:center;">⚠️ منطقة الخطر</h4>
@@ -758,6 +807,8 @@
 
       <div id="st-tab-content-invoice" class="st-tab-pane admin-only" style="display:none;">
         <h4 style="margin:0 0 10px 0; color:var(--primary); text-align:center;">🧾 بيانات الفاتورة (تظهر في PDF والواتساب)</h4>
+        <div class="form-group"><label>اسم المؤسسة</label><input type="text" id="set-app-company-name" placeholder="مثال: مؤسسة نواة التمر التجارية"></div>
+        <div class="form-group"><label>السجل التجاري</label><input type="text" id="set-app-cr-number" placeholder="مثال: 1234567890"></div>
         <div class="form-group"><label>العنوان / الموقع الجغرافي</label><input type="text" id="set-app-address" placeholder="مثال: جدة - المملكة العربية السعودية"></div>
         <div class="form-group"><label>رقم الجوال / الهاتف</label><input type="text" id="set-app-phone" placeholder="05xxxxxxxx"></div>
         <div class="form-group"><label>البريد الإلكتروني (اختياري)</label><input type="text" id="set-app-email" placeholder="info@example.com"></div>
@@ -780,7 +831,7 @@
         <button class="btn-primary" onclick="createUser()">➕ إنشاء المستخدم</button>
       </div>
 
-      <div id="st-tab-content-audit" class="st-tab-pane admin-only" style="display:none;">
+      <div id="st-tab-content-audit" class="st-tab-pane" style="display:none;">
         <h4 style="margin:0 0 10px 0; color:var(--primary); text-align:center;">سجل الحركة والعمليات</h4>
         <div id="audit-logs-container" style="max-height: 350px; overflow-y:auto; text-align:right;"></div>
       </div>
@@ -843,7 +894,6 @@
 
   <!-- المخزون -->
   <div id="page-stock" class="page-section">
-    <button class="btn-back-main" onclick="goToMainDashboard()">⬅️ عودة للرئيسية</button>
     <div class="card admin-only">
       <button class="btn-primary" onclick="toggleStockForm()">+ إضافة نوع تمر جديد</button>
       <div id="add-stock-form" style="display:none; margin-top:12px;">
@@ -863,7 +913,6 @@
 
   <!-- الفواتير -->
   <div id="page-invoices" class="page-section">
-    <button class="btn-back-main" onclick="goToMainDashboard()">⬅️ عودة للرئيسية</button>
     <div class="top-tabs">
       <button class="top-tab-btn tab-sale active" id="btn-tab-inv-sale" onclick="switchInvTab('sale', this)">☑️ فواتير المبيعات</button>
       <button class="top-tab-btn tab-pur" id="btn-tab-inv-purchase" onclick="switchInvTab('purchase', this)">📉 فواتير المشتريات</button>
@@ -906,9 +955,9 @@
         <div class="form-group"><label>المتبقي</label><input type="number" id="inv-rem" readonly style="background:#E7E5E4;"></div>
         <div class="form-group"><label>ملاحظات / نص إضافي على الفاتورة</label><textarea id="inv-notes" rows="3" placeholder="اكتب أي ملاحظة أو تفاصيل إضافية تظهر في الفاتورة..."></textarea></div>
 
-        <div class="flex-gap">
-          <button class="btn-primary" id="inv-save-btn" style="flex:1;" onclick="saveInvoice()">اعتماد الحفظ</button>
-          <button class="btn-outline" id="inv-cancel-btn" style="flex:1; display:none;" onclick="cancelInvoiceEdit()">↩️ تراجع عن التعديل</button>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="btn-primary" id="inv-save-btn" onclick="saveInvoice()">اعتماد الحفظ</button>
+          <button class="btn-outline" id="inv-cancel-btn" onclick="cancelInvoiceEdit()">↩️ تراجع</button>
         </div>
       </div>
     </div>
@@ -919,7 +968,6 @@
 
   <!-- الحسابات -->
   <div id="page-accounts" class="page-section">
-    <button class="btn-back-main" onclick="goToMainDashboard()">⬅️ عودة للرئيسية</button>
     <div class="top-tabs">
       <button class="top-tab-btn tab-cust active" id="btn-tab-acc-cust" onclick="switchAccTab('cust', this)">👥 العملاء</button>
       <button class="top-tab-btn tab-supp" id="btn-tab-acc-supp" onclick="switchAccTab('supp', this)">🚛 الموردين</button>
@@ -930,56 +978,12 @@
     </div>
     <p style="text-align:center; color:#FFF; opacity:0.85; font-size:0.82rem; font-weight:700; margin:-4px 0 10px 0;">📌 تظهر هنا فقط الحسابات التي عليها مبالغ متبقية غير مسددة</p>
 
-    <div class="card admin-only">
-      <button class="btn-primary" onclick="openAccountInvoiceForm()">+ إنشاء فاتورة جديدة في الحسابات</button>
-      <div id="add-acc-inv-form" style="display:none; margin-top:12px;">
-        <div class="form-group"><label>نوع الفاتورة</label>
-          <select id="acc-inv-type">
-            <option value="SALE">مبيعات</option>
-            <option value="PURCHASE">مشتريات</option>
-          </select>
-        </div>
-        <div class="form-group"><label>التاريخ</label><input type="date" id="acc-inv-date"></div>
-        <div class="form-group"><label>اسم الجهة (عميل / مورد)</label><input type="text" id="acc-inv-party" placeholder="اسم الجهة"></div>
-        <div class="form-group"><label>رقم جوال الجهة (اختياري)</label><input type="text" id="acc-inv-party-phone" placeholder="05xxxxxxxx"></div>
-
-        <div style="background:#F5F5F4; padding:10px; border-radius:8px; margin-bottom:10px;">
-          <h4 style="margin:0 0 8px 0; color:var(--primary);">أصناف التمر</h4>
-          <div class="form-group"><select id="acc-inv-prod-select"></select></div>
-          <div class="flex-gap">
-            <div class="form-group" style="flex:1;"><input type="number" id="acc-inv-item-qty" placeholder="الكمية"></div>
-            <div class="form-group" style="flex:1;"><input type="number" id="acc-inv-item-price" placeholder="السعر"></div>
-          </div>
-          <button class="btn-sm btn-add-item" style="width:100%; padding:8px;" onclick="addAccItemToCart()">+ إضافة الصنف</button>
-        </div>
-
-        <table class="cart-table">
-          <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th>حذف</th></tr></thead>
-          <tbody id="acc-cart-items-body"></tbody>
-        </table>
-
-        <div class="flex-gap">
-          <div class="form-group" style="flex:1;"><label>المجموع الفرعي</label><input type="number" id="acc-inv-subtotal" readonly style="background:#E7E5E4;"></div>
-          <div class="form-group" style="flex:1;"><label>الخصم (اختياري)</label><input type="number" id="acc-inv-discount" value="0" oninput="recalcAccInvTotals()"></div>
-        </div>
-        <div class="flex-gap">
-          <div class="form-group" style="flex:1;"><label>الإجمالي بعد الخصم</label><input type="number" id="acc-inv-total" readonly style="background:#E7E5E4;"></div>
-          <div class="form-group" style="flex:1;"><label>المدفوع</label><input type="number" id="acc-inv-paid" oninput="calcAccInvRemaining()"></div>
-        </div>
-        <div class="form-group"><label>المتبقي</label><input type="number" id="acc-inv-rem" readonly style="background:#E7E5E4;"></div>
-        <div class="form-group"><label>ملاحظات / نص إضافي على الفاتورة</label><textarea id="acc-inv-notes" rows="3" placeholder="اكتب أي ملاحظة أو تفاصيل إضافية تظهر في الفاتورة..."></textarea></div>
-
-        <button class="btn-primary" onclick="saveAccountInvoice()">اعتماد وحفظ الفاتورة</button>
-      </div>
-    </div>
-
     <div id="tab-acc-cust" class="tab-content active"><div id="acc-cust-container"></div></div>
     <div id="tab-acc-supp" class="tab-content"><div id="acc-supp-container"></div></div>
   </div>
 
   <!-- المصروفات -->
   <div id="page-expenses" class="page-section">
-    <button class="btn-back-main" onclick="goToMainDashboard()">⬅️ عودة للرئيسية</button>
     <div class="card admin-only" style="padding: 12px;">
       <h3 style="margin-top:0; margin-bottom:8px; color:var(--primary); font-size:1.1rem;">تسجيل مصروف</h3>
       <div class="flex-gap" style="margin-bottom:8px;">
@@ -994,7 +998,6 @@
 
   <!-- التقارير -->
   <div id="page-reports" class="page-section">
-    <button class="btn-back-main" onclick="goToMainDashboard()">⬅️ عودة للرئيسية</button>
     <div class="card">
       <h3 style="margin-top:0; color:var(--primary); text-align:center;">📊 تقارير مخصصة متقدمة</h3>
       
@@ -1020,7 +1023,8 @@
       </div>
       <div class="form-group">
         <label>🔍 بحث باسم العميل / المورد</label>
-        <input type="text" id="report-filter-party-search" placeholder="اكتب اسم العميل أو المورد..." oninput="renderAllReports()">
+        <input type="text" id="report-filter-party-search" list="report-party-suggestions" placeholder="اكتب اسم العميل أو المورد..." oninput="renderAllReports()">
+        <datalist id="report-party-suggestions"></datalist>
       </div>
 
       <div id="custom-date-range-box" class="flex-gap" style="display:none; margin-bottom:10px;">
@@ -1083,6 +1087,32 @@
     };
     let currentThemeKey = 'heritage';
     let appSettingsRow = null;
+    let dismissedLowStockAlert = false;
+    let lowStockThreshold = 5;
+    let financialsHidden = false;
+
+    // نستبدل alert() الأصلية بتنبيه داخل التطبيق نفسه، لأن بعض متصفحات تطبيقات
+    // الجوال (WebView) تمنع نافذة alert() الأصلية من الظهور بصمت.
+    // كل استدعاءات alert(...) بالكود تبقى كما هي بدون أي تعديل؛ فقط طريقة العرض تغيّرت.
+    window.alert = function (message) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const isError = /❌|🚫/.test(message);
+      const isSuccess = /✅|🎉/.test(message);
+      const toast = document.createElement('div');
+      toast.className = 'toast-msg' + (isError ? ' toast-error' : isSuccess ? ' toast-success' : '');
+      const span = document.createElement('span');
+      span.style.flex = '1';
+      span.style.whiteSpace = 'pre-line';
+      span.innerText = message;
+      const closeBtn = document.createElement('button');
+      closeBtn.innerText = '✕';
+      closeBtn.onclick = () => { if (toast.parentNode) toast.remove(); };
+      toast.appendChild(span);
+      toast.appendChild(closeBtn);
+      container.appendChild(toast);
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 6000);
+    };
 
     function generateId() { return Date.now() + Math.floor(Math.random() * 1000); }
 
@@ -1159,13 +1189,18 @@
         action: actionText,
         date: new Date().toLocaleString('ar-SA')
       };
-      await _supabase.from('audit_logs').insert([logEntry]);
+      const { error } = await _supabase.from('audit_logs').insert([logEntry]);
+      if (error) { console.error('فشل تسجيل الحركة:', error.message); alert('❌ فشل تسجيل الحركة بالسجل: ' + error.message); }
     }
 
     async function loadAuditLogs() {
-      const { data } = await _supabase.from('audit_logs').select('*').order('id', { ascending: false }).limit(50);
+      const { data, error } = await _supabase.from('audit_logs').select('*').order('id', { ascending: false }).limit(50);
       const container = document.getElementById('audit-logs-container');
       container.innerHTML = '';
+      if (error) {
+        container.innerHTML = `<div class="empty-hint" style="color:var(--danger);">❌ تعذر تحميل سجل الحركة: ${error.message}</div>`;
+        return;
+      }
       if (data && data.length > 0) {
         data.forEach(l => {
           container.innerHTML += `<div class="user-row"><div><strong>${l.user}</strong>: ${l.action}</div><span style="font-size:0.75rem; color:var(--muted);">${l.date}</span></div>`;
@@ -1247,6 +1282,7 @@
       document.body.classList.toggle('role-viewer', currentUser.role !== 'admin');
       document.getElementById('header-role-badge').innerText = currentUser.role === 'admin' ? ('👑 مدير — ' + currentUser.username) : ('🧾 شريك — ' + currentUser.username);
       document.getElementById('header-role-badge').className = 'role-badge ' + (currentUser.role === 'admin' ? 'admin' : 'viewer');
+      dismissedLowStockAlert = false;
       await loadAppSettings();
       await loadDataFromSupabase();
       updateInvCreateCardVisibility();
@@ -1258,26 +1294,105 @@
         currentUser = null;
         document.getElementById('app-content').style.display = 'none';
         document.getElementById('page-login').style.display = 'flex';
-      });
+      }, 'نعم، تسجيل الخروج');
+    }
+
+    async function downloadBackup() {
+      if (!requireAdmin()) return;
+      const backup = {
+        app: 'نواة التمر',
+        exported_at: new Date().toISOString(),
+        settings: appSettingsRow,
+        stock,
+        invoices,
+        expenses,
+        payments
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      a.download = `نسخة-احتياطية-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      await logAction('تنزيل نسخة احتياطية من البيانات');
+      alert('✅ تم تنزيل النسخة الاحتياطية بنجاح');
+    }
+
+    function triggerBackupImport() {
+      if (!requireAdmin()) return;
+      document.getElementById('backup-file-input').click();
+    }
+
+    async function handleBackupImport(event) {
+      if (!requireAdmin()) { event.target.value = ''; return; }
+      const file = event.target.files[0];
+      if (!file) return;
+      let data;
+      try {
+        const text = await file.text();
+        data = JSON.parse(text);
+      } catch (e) {
+        alert('❌ الملف غير صالح، تأكد إنه ملف نسخة احتياطية صحيح (JSON)');
+        event.target.value = '';
+        return;
+      }
+
+      confirmAction('⚠️ سيتم استعادة البيانات من هذا الملف ودمجها مع بياناتك الحالية (بدون حذف أي شيء موجود). متأكد؟', async () => {
+        let restoredTables = [];
+        try {
+          if (Array.isArray(data.stock) && data.stock.length) {
+            const { error } = await _supabase.from('stock').upsert(data.stock);
+            if (error) throw new Error('المخزون: ' + error.message);
+            restoredTables.push(`المخزون (${data.stock.length})`);
+          }
+          if (Array.isArray(data.invoices) && data.invoices.length) {
+            const { error } = await _supabase.from('invoices').upsert(data.invoices);
+            if (error) throw new Error('الفواتير: ' + error.message);
+            restoredTables.push(`الفواتير (${data.invoices.length})`);
+          }
+          if (Array.isArray(data.expenses) && data.expenses.length) {
+            const { error } = await _supabase.from('expenses').upsert(data.expenses);
+            if (error) throw new Error('المصروفات: ' + error.message);
+            restoredTables.push(`المصروفات (${data.expenses.length})`);
+          }
+          if (Array.isArray(data.payments) && data.payments.length) {
+            const { error } = await _supabase.from('payments').upsert(data.payments);
+            if (error) throw new Error('الدفعات: ' + error.message);
+            restoredTables.push(`الدفعات (${data.payments.length})`);
+          }
+        } catch (err) {
+          alert('❌ فشلت الاستعادة أثناء: ' + err.message);
+          event.target.value = '';
+          return;
+        }
+        await logAction(`استعادة نسخة احتياطية: ${restoredTables.join('، ')}`);
+        await loadDataFromSupabase();
+        event.target.value = '';
+        alert(`✅ تم استعادة البيانات بنجاح: ${restoredTables.join('، ') || 'لا يوجد بيانات بالملف'}`);
+      }, 'نعم، استعادة');
     }
 
     async function resetAllData() {
       if (!requireAdmin()) return;
-      confirmAction('⚠️ سيتم حذف جميع الفواتير والمصروفات والدفعات وسجل الحركة، وتصفير كميات المخزون إلى صفر. هل تريد المتابعة؟', () => {
+      confirmAction('⚠️ سيتم حذف جميع الفواتير والمصروفات والدفعات وسجل الحركة، وتصفير كميات المخزون وتكلفتها إلى صفر. هل تريد المتابعة؟', () => {
         confirmAction('🚨 تأكيد أخير: هذا الإجراء نهائي ولا يمكن التراجع عنه. متأكد تمامًا؟', async () => {
           await _supabase.from('invoices').delete().gt('id', 0);
           await _supabase.from('expenses').delete().gt('id', 0);
           await _supabase.from('payments').delete().gt('id', 0);
           await _supabase.from('audit_logs').delete().gt('id', 0);
           for (let s of stock) {
-            await _supabase.from('stock').upsert([{ ...s, qty: 0 }]);
+            await _supabase.from('stock').upsert([{ ...s, qty: 0, cost: 0 }]);
           }
-          await logAction('🗑️ تصفير جميع بيانات الفواتير والمصروفات والدفعات والمخزون (بداية جديدة)');
+          await logAction('🗑️ تصفير جميع بيانات الفواتير والمصروفات والدفعات والمخزون وتكلفة الأصناف (بداية جديدة)');
           alert('✅ تم تصفير البيانات بنجاح، يمكنك البدء بحساباتك الحقيقية الآن');
           closeSettingsModal();
           await loadDataFromSupabase();
-        });
-      });
+        }, 'نعم، تصفير نهائيًا');
+      }, 'نعم، متابعة');
     }
 
     function requireAdmin() {
@@ -1353,9 +1468,13 @@
           document.getElementById('header-app-sub').innerText = appSettingsRow.app_sub || 'محاسبة تجارة التمور';
           currentThemeKey = appSettingsRow.theme_key || 'heritage';
           applyThemeVars(THEMES[currentThemeKey] || THEMES.heritage);
+          lowStockThreshold = (appSettingsRow.low_stock_threshold !== null && appSettingsRow.low_stock_threshold !== undefined) ? Number(appSettingsRow.low_stock_threshold) : 5;
+          if (document.getElementById('set-low-stock-threshold')) document.getElementById('set-low-stock-threshold').value = lowStockThreshold;
           if (document.getElementById('set-app-name')) document.getElementById('set-app-name').value = appSettingsRow.app_name || '🌴 نواة التمر';
           if (document.getElementById('set-app-sub')) document.getElementById('set-app-sub').value = appSettingsRow.app_sub || 'محاسبة تجارة التمور';
           if (document.getElementById('set-app-address')) document.getElementById('set-app-address').value = appSettingsRow.app_address || '';
+          if (document.getElementById('set-app-company-name')) document.getElementById('set-app-company-name').value = appSettingsRow.app_company_name || '';
+          if (document.getElementById('set-app-cr-number')) document.getElementById('set-app-cr-number').value = appSettingsRow.app_cr_number || '';
           if (document.getElementById('set-app-phone')) document.getElementById('set-app-phone').value = appSettingsRow.app_phone || '';
           if (document.getElementById('set-app-email')) document.getElementById('set-app-email').value = appSettingsRow.app_email || '';
           if (document.getElementById('set-app-website')) document.getElementById('set-app-website').value = appSettingsRow.app_website || '';
@@ -1370,16 +1489,20 @@
       const app_name = document.getElementById('set-app-name').value.trim() || '🌴 نواة التمر';
       const app_sub = document.getElementById('set-app-sub').value.trim() || 'محاسبة تجارة التمور';
       const app_address = document.getElementById('set-app-address').value.trim();
+      const app_company_name = document.getElementById('set-app-company-name').value.trim();
+      const app_cr_number = document.getElementById('set-app-cr-number').value.trim();
       const app_phone = document.getElementById('set-app-phone').value.trim();
       const app_email = document.getElementById('set-app-email').value.trim();
       const app_website = document.getElementById('set-app-website').value.trim();
       const app_footer = document.getElementById('set-app-footer').value.trim() || '✨ شكراً لتعاملكم معنا ✨';
-      const { error } = await _supabase.from('settings').upsert([{ id: 1, app_name, app_sub, app_address, app_phone, app_email, app_website, app_footer, theme_key: currentThemeKey }]);
+      const low_stock_threshold = parseInt(document.getElementById('set-low-stock-threshold').value);
+      const { error } = await _supabase.from('settings').upsert([{ id: 1, app_name, app_sub, app_address, app_company_name, app_cr_number, app_phone, app_email, app_website, app_footer, theme_key: currentThemeKey, low_stock_threshold: isNaN(low_stock_threshold) ? 5 : low_stock_threshold }]);
       if (error) { alert('❌ فشل حفظ الإعدادات: ' + error.message); return; }
       applyThemeVars(THEMES[currentThemeKey] || THEMES.heritage);
       await logAction('تحديث إعدادات التطبيق');
       alert('✅ تم حفظ الإعدادات');
       await loadAppSettings();
+      renderAll();
     }
 
     function openSettingsModal() {
@@ -1395,9 +1518,23 @@
       if (data) {
         data.forEach(u => {
           const isMe = u.id === currentUser.id;
-          container.innerHTML += `<div class="user-row"><div><strong>${u.username}</strong> <span class="badge-role ${u.role}">${u.role === 'admin' ? 'مدير' : 'شريك'}</span></div>${isMe ? '' : `<button class="btn-sm btn-delete" onclick="deleteUser('${u.id}','${u.username}')">حذف</button>`}</div>`;
+          const toggleLabel = u.role === 'admin' ? '🔄 تحويل لشريك' : '🔄 تحويل لمدير';
+          container.innerHTML += `<div class="user-row"><div><strong>${u.username}</strong> <span class="badge-role ${u.role}">${u.role === 'admin' ? 'مدير' : 'شريك'}</span></div>${isMe ? '' : `<div class="item-actions"><button class="btn-sm btn-edit" onclick="toggleUserRole('${u.id}','${u.username.replace(/'/g, "\\'")}','${u.role}')">${toggleLabel}</button><button class="btn-sm btn-delete" onclick="deleteUser('${u.id}','${u.username.replace(/'/g, "\\'")}')">حذف</button></div>`}</div>`;
         });
       }
+    }
+
+    function toggleUserRole(id, username, currentRole) {
+      if (!requireAdmin()) return;
+      const newRole = currentRole === 'admin' ? 'viewer' : 'admin';
+      const newRoleLabel = newRole === 'admin' ? 'مدير' : 'شريك';
+      confirmAction(`تحويل "${username}" إلى ${newRoleLabel}؟`, async () => {
+        const { error } = await _supabase.from('users').update({ role: newRole }).eq('id', id);
+        if (error) { alert('❌ فشل تحويل الصلاحية: ' + error.message); return; }
+        await logAction(`تحويل صلاحية المستخدم ${username} إلى ${newRoleLabel}`);
+        renderUsersList();
+        alert(`✅ تم تحويل ${username} إلى ${newRoleLabel}`);
+      }, 'نعم، تحويل');
     }
 
     async function createUser() {
@@ -1407,25 +1544,32 @@
       const role = document.getElementById('nu-role').value;
       if (!username || password.length < 4) return alert('أدخل بيانات صحيحة');
       const password_hash = await hashPassword(password);
-      await _supabase.from('users').insert([{ id: crypto.randomUUID(), username, password_hash, role, created_at: new Date().toISOString() }]);
+      const { error } = await _supabase.from('users').insert([{ id: crypto.randomUUID(), username, password_hash, role, created_at: new Date().toISOString() }]);
+      if (error) { alert('❌ فشل إنشاء المستخدم: ' + error.message); return; }
       await logAction(`إضافة مستخدم جديد: ${username}`);
+      document.getElementById('nu-username').value = '';
+      document.getElementById('nu-password').value = '';
       renderUsersList();
+      alert('✅ تم إنشاء المستخدم بنجاح');
     }
 
     function deleteUser(id, username) {
       if (!requireAdmin()) return;
       confirmAction(`حذف المستخدم ${username}؟`, async () => {
-        await _supabase.from('users').delete().eq('id', id);
+        const { error } = await _supabase.from('users').delete().eq('id', id);
+        if (error) { alert('❌ فشل حذف المستخدم: ' + error.message); return; }
         await logAction(`حذف المستخدم: ${username}`);
         renderUsersList();
+        alert('✅ تم حذف المستخدم');
       });
     }
 
-    function confirmAction(msg, onYes) {
+    function confirmAction(msg, onYes, confirmLabel = 'نعم، حذف') {
       document.getElementById('confirm-msg').innerText = msg;
       document.getElementById('confirm-modal').classList.add('active');
       const yesBtn = document.getElementById('btn-confirm-yes');
       const newBtn = yesBtn.cloneNode(true);
+      newBtn.innerText = confirmLabel;
       yesBtn.parentNode.replaceChild(newBtn, yesBtn);
       newBtn.onclick = () => { closeConfirmModal(); onYes(); };
     }
@@ -1443,6 +1587,7 @@
         if (inv.data) invoices = inv.data;
         if (exp.data) expenses = exp.data;
         if (pay.data) payments = pay.data;
+        await backfillInvoiceNumbers();
         rebuildAccounts();
         populateReportFilters();
         renderAll();
@@ -1497,20 +1642,31 @@
       if (accInvTypeSelect) accInvTypeSelect.value = currentAccTab === 'CUSTOMER' ? 'SALE' : 'PURCHASE';
     }
 
+    let isSavingStock = false;
     async function saveStockItem() {
       if (!requireAdmin()) return;
+      if (isSavingStock) return;
+      isSavingStock = true;
+      try {
       const name = document.getElementById('st-name').value.trim();
       const qty = parseInt(document.getElementById('st-qty').value) || 0;
       const cost = parseFloat(document.getElementById('st-cost').value) || 0;
       if (!name) return alert("أدخل اسم الصنف");
+      if (qty < 0) return alert("⚠️ لا يمكن أن تكون الكمية سالبة");
+      if (cost < 0) return alert("⚠️ لا يمكن أن تكون التكلفة سالبة");
 
       const id = editingStockId !== null ? editingStockId : generateId();
-      await _supabase.from('stock').upsert([{ id, name, qty, cost }]);
+      const { error } = await _supabase.from('stock').upsert([{ id, name, qty, cost }]);
+      if (error) { alert('❌ فشل حفظ الصنف: ' + error.message); return; }
       await logAction(`حفظ/تحديث صنف بالمخزون: ${name}`);
       document.getElementById('st-name').value = '';
       editingStockId = null;
       toggleElement('add-stock-form');
       await loadDataFromSupabase();
+      alert('✅ تم حفظ الصنف بنجاح');
+      } finally {
+        isSavingStock = false;
+      }
     }
 
     function editStock(id) {
@@ -1528,10 +1684,18 @@
 
     function deleteStock(id) {
       if (!requireAdmin()) return;
-      confirmAction("حذف هذا الصنف؟", async () => {
-        await _supabase.from('stock').delete().eq('id', id);
-        await logAction(`حذف صنف من المخزون ID: ${id}`);
+      const p = stock.find(s => s.id === id);
+      const usedInInvoices = invoices.filter(inv => (inv.items || []).some(it => it.prodId === id));
+      let msg = "حذف هذا الصنف؟";
+      if (usedInInvoices.length > 0) {
+        msg = `⚠️ هذا الصنف مستخدم في ${usedInInvoices.length} فاتورة سابقة. حذفه لن يمسح تلك الفواتير (تبقى محفوظة كما هي)، لكنه سيختفي من قائمة الأصناف المتاحة عند إنشاء فواتير جديدة أو التعديل. متابعة الحذف؟`;
+      }
+      confirmAction(msg, async () => {
+        const { error } = await _supabase.from('stock').delete().eq('id', id);
+        if (error) { alert('❌ فشل حذف الصنف: ' + error.message); return; }
+        await logAction(`حذف صنف من المخزون: ${p ? p.name : id}${usedInInvoices.length > 0 ? ` (مستخدم في ${usedInInvoices.length} فاتورة سابقة)` : ''}`);
         await loadDataFromSupabase();
+        alert('✅ تم حذف الصنف');
       });
     }
 
@@ -1545,7 +1709,7 @@
       document.getElementById('inv-discount').value = 0;
       document.getElementById('inv-paid').value = '';
       document.getElementById('inv-save-btn').innerText = 'اعتماد الحفظ';
-      document.getElementById('inv-cancel-btn').style.display = 'none';
+      document.getElementById('inv-save-btn').style.backgroundColor = '';
       tempCartItems = [];
       renderCartTable();
       document.getElementById('add-inv-form').style.display = 'block';
@@ -1569,7 +1733,6 @@
       document.getElementById('inv-paid').value = inv.paid;
       calcInvRemaining();
       document.getElementById('inv-save-btn').innerText = '💾 حفظ التعديل';
-      document.getElementById('inv-cancel-btn').style.display = 'block';
       document.getElementById('add-inv-form').style.display = 'block';
       document.getElementById('page-invoices').scrollIntoView({ behavior: 'smooth' });
     }
@@ -1584,7 +1747,6 @@
       document.getElementById('inv-discount').value = 0;
       document.getElementById('inv-paid').value = '';
       document.getElementById('inv-save-btn').innerText = 'اعتماد الحفظ';
-      document.getElementById('inv-cancel-btn').style.display = 'none';
       renderCartTable();
       document.getElementById('add-inv-form').style.display = 'none';
     }
@@ -1610,6 +1772,7 @@
       const price = parseFloat(document.getElementById('inv-item-price').value) || 0;
       const prod = stock.find(s => s.id === prodId);
       if (!prod || qty <= 0) return alert("خطأ في البيانات");
+      if (price < 0) return alert("⚠️ لا يمكن أن يكون السعر سالبًا");
 
       if (currentInvType === 'SALE') {
         const available = getAvailableQtyForInvoiceCart(prodId);
@@ -1667,16 +1830,20 @@
         (inv.items || []).forEach(it => { if (it.prodId === prodId) purchaseItems.push(it); });
       });
       const totalQty = purchaseItems.reduce((s, it) => s + Number(it.qty), 0);
-      if (totalQty <= 0) return;
       const totalCost = purchaseItems.reduce((s, it) => s + (Number(it.qty) * Number(it.price)), 0);
       const p = stock.find(s => s.id === prodId);
       if (!p) return;
-      p.cost = totalCost / totalQty;
+      // لو ما تبقى أي فاتورة مشتريات لهذا الصنف، تكلفته تصفر تلقائيًا بدل ما تحتفظ بآخر قيمة قديمة
+      p.cost = totalQty > 0 ? (totalCost / totalQty) : 0;
       const { error } = await _supabase.from('stock').upsert([p]);
       if (error) alert('❌ فشل تحديث تكلفة الصنف: ' + error.message);
     }
 
     async function saveInvoice() {
+      const saveBtn = document.getElementById('inv-save-btn');
+      if (saveBtn && saveBtn.disabled) return;
+      if (saveBtn) saveBtn.disabled = true;
+      try {
       const party = document.getElementById('inv-party').value.trim();
       const partyPhone = document.getElementById('inv-party-phone').value.trim();
       const paid = parseFloat(document.getElementById('inv-paid').value) || 0;
@@ -1697,79 +1864,103 @@
         if (!canCreateInvoiceOfType(currentInvType)) { alert('🚫 لا تملك صلاحية إنشاء هذا النوع من الفواتير'); return; }
       }
 
+      // نثبّت تكلفة كل صنف "وقت البيع" فعليًا (لأول مرة فقط، نحافظ على القيمة القديمة لو موجودة عند التعديل)
+      // عشان تقارير الفترات الماضية تبقى دقيقة حتى لو تغيّرت أسعار الشراء لاحقًا
+      if (currentInvType === 'SALE') {
+        tempCartItems.forEach(item => {
+          if (item.unitCost === undefined || item.unitCost === null) {
+            const stItem = stock.find(s => s.id === item.prodId);
+            item.unitCost = stItem ? Number(stItem.cost) : 0;
+          }
+        });
+      }
+
       let subtotal = tempCartItems.reduce((s, i) => s + i.total, 0);
       let total = Math.max(0, subtotal - discount);
 
       if (paid > total) return alert('⚠️ لا يمكن دفع مبلغ أكبر من إجمالي الفاتورة');
 
-      // تحقق نهائي: لا نسمح ببيع كمية أكبر من المتوفر بالمخزون
-      if (currentInvType === 'SALE') {
-        const requestedByProd = {};
-        tempCartItems.forEach(it => { requestedByProd[it.prodId] = (requestedByProd[it.prodId] || 0) + Number(it.qty); });
-        for (let pid in requestedByProd) {
-          const p = stock.find(s => s.id === Number(pid));
-          if (!p) continue;
-          let avail = Number(p.qty);
-          if (oldInv && oldInv.type === 'SALE' && oldInv.items) {
-            const oldItem = oldInv.items.find(it => it.prodId === Number(pid));
-            if (oldItem) avail += Number(oldItem.qty);
-          }
-          if (requestedByProd[pid] > avail) {
-            return alert(`⚠️ الكمية المطلوبة من "${p.name}" أكبر من المتوفر بالمخزون (المتوفر: ${avail})`);
-          }
-        }
-      }
-
-      if (oldInv && oldInv.items) {
-        oldInv.items.forEach(item => {
-          let p = stock.find(s => s.id === item.prodId);
-          if (p) {
-            if (oldInv.type === 'SALE') p.qty += item.qty;
-            else p.qty -= item.qty;
-          }
-        });
-      }
-
-      // نطبّق تأثير الأصناف الجديدة على الكميات فقط (التكلفة تُحسب لاحقًا من فواتير المشتريات)
-      tempCartItems.forEach(item => {
-        let p = stock.find(s => s.id === item.prodId);
-        if (p) {
-          if (currentInvType === 'SALE') p.qty -= item.qty;
-          else p.qty += item.qty;
-        }
-      });
-
-      // نحفظ كل أصناف المخزون المتأثرة (قديمة وجديدة)
+      // نحسب الكمية النهائية المتوقعة لكل صنف متأثر (بعد عكس تأثير الفاتورة القديمة، وتطبيق الجديدة)
+      // بدون كتابتها فعليًا بعد - فقط للتحقق المسبق من عدم الوصول لكمية سالبة
       const touchedIds = new Set([
         ...((oldInv && oldInv.items) ? oldInv.items.map(i => i.prodId) : []),
         ...tempCartItems.map(i => i.prodId)
       ]);
+      const projectedQty = {};
+      touchedIds.forEach(pid => {
+        const p = stock.find(s => s.id === pid);
+        if (!p) return;
+        let qty = Number(p.qty);
+        if (oldInv && oldInv.items) {
+          oldInv.items.filter(it => it.prodId === pid).forEach(it => {
+            if (oldInv.type === 'SALE') qty += Number(it.qty);
+            else qty -= Number(it.qty);
+          });
+        }
+        tempCartItems.filter(it => it.prodId === pid).forEach(it => {
+          if (currentInvType === 'SALE') qty -= Number(it.qty);
+          else qty += Number(it.qty);
+        });
+        projectedQty[pid] = qty;
+      });
+
+      // تحقق نهائي: لا نسمح بأي عملية (بيع، شراء جديد، أو تعديل فاتورة) تجعل أي صنف بكمية سالبة
+      for (const pid of touchedIds) {
+        if (projectedQty[pid] !== undefined && projectedQty[pid] < 0) {
+          const p = stock.find(s => s.id === pid);
+          return alert(`⚠️ لا يمكن حفظ هذه الفاتورة: ستجعل مخزون "${p ? p.name : ''}" سالبًا (النتيجة: ${projectedQty[pid]}). تحقق من الكميات.`);
+        }
+      }
+
+      // نطبّق الكميات المحسوبة على نسخة الذاكرة المحلية فقط الآن (لسا ما نكتبها بقاعدة البيانات)
+      touchedIds.forEach(pid => {
+        if (projectedQty[pid] === undefined) return;
+        const p = stock.find(s => s.id === pid);
+        if (p) p.qty = projectedQty[pid];
+      });
+
+      // نحفظ الفاتورة نفسها أولًا (هي المصدر الأساسي للحقيقة) قبل تحديث كميات المخزون،
+      // حتى لو انقطع الاتصال بعدها أثناء تحديث المخزون، تبقى الفاتورة موجودة ويمكن تصحيح
+      // المخزون يدويًا لاحقًا، بدل ما يتغيّر المخزون بدون أي فاتورة تثبته
+      let isNewInvoice = editingInvoiceId === null;
+      if (!isNewInvoice) {
+        const { error } = await _supabase.from('invoices').update({ type: currentInvType, party, party_phone: partyPhone, items: tempCartItems, discount, total, paid, remaining: total - paid, date, notes }).eq('id', editingInvoiceId);
+        if (error) { alert('❌ فشل حفظ التعديل: ' + error.message); return; }
+      } else {
+        const { error } = await _supabase.from('invoices').insert([{ id: generateId(), invoice_number: generateInvoiceNumber(currentInvType), type: currentInvType, party, party_phone: partyPhone, items: tempCartItems, discount, total, paid, remaining: total - paid, date, notes, created_by: currentUser.username, sold_by: currentUser.username, created_at: new Date().toISOString() }]);
+        if (error) { alert('❌ فشل حفظ الفاتورة: ' + error.message); return; }
+      }
+
+      // الآن نحدّث كميات المخزون؛ لو انقطع الاتصال أو فشل جزء هنا، الفاتورة محفوظة فعلاً
+      // وتقدر تصحح كمية المخزون يدويًا من صفحة المخزون بدل ما تضيع العملية كلها
+      let stockUpdateFailed = false;
       for (let pid of touchedIds) {
         let p = stock.find(s => s.id === pid);
         if (p) {
           const { error: stockErr } = await _supabase.from('stock').upsert([p]);
-          if (stockErr) { alert('❌ فشل تحديث المخزون: ' + stockErr.message); return; }
+          if (stockErr) {
+            stockUpdateFailed = true;
+            alert('⚠️ تم حفظ الفاتورة بنجاح، لكن صار خطأ بتحديث كمية المخزون: ' + stockErr.message + ' — راجع صفحة المخزون وصحّح الكمية يدويًا إذا احتاج الأمر.');
+          }
         }
       }
 
-      if (editingInvoiceId !== null) {
-        const { error } = await _supabase.from('invoices').update({ type: currentInvType, party, party_phone: partyPhone, items: tempCartItems, discount, total, paid, remaining: total - paid, date, notes }).eq('id', editingInvoiceId);
-        if (error) { alert('❌ فشل حفظ التعديل: ' + error.message); return; }
+      if (!isNewInvoice) {
         await logAction(`تعديل فاتورة لـ ${party} بقيمة ${total}`);
-        alert("تم تحديث الفاتورة بنجاح!");
+        if (!stockUpdateFailed) alert("✅ تم تحديث الفاتورة بنجاح!");
         editingInvoiceId = null;
       } else {
-        const { error } = await _supabase.from('invoices').insert([{ id: generateId(), type: currentInvType, party, party_phone: partyPhone, items: tempCartItems, discount, total, paid, remaining: total - paid, date, notes, created_by: currentUser.username, sold_by: currentUser.username, created_at: new Date().toISOString() }]);
-        if (error) { alert('❌ فشل حفظ الفاتورة: ' + error.message); return; }
         await logAction(`إصدار فاتورة ${currentInvType === 'SALE' ? 'مبيعات' : 'مشتريات'} لـ ${party} بقيمة ${total}`);
-        alert("تم الحفظ بنجاح!");
+        if (!stockUpdateFailed) alert("✅ تم الحفظ بنجاح!");
       }
       document.getElementById('inv-save-btn').innerText = 'اعتماد الحفظ';
-      document.getElementById('inv-cancel-btn').style.display = 'none';
       toggleElement('add-inv-form');
       await loadDataFromSupabase();
       for (let pid of touchedIds) { await recalcProductCostFromPurchases(pid); }
       await loadDataFromSupabase();
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // دوال إنشاء وحفظ فاتورة من قسم الحسابات
@@ -1799,6 +1990,7 @@
       const price = parseFloat(document.getElementById('acc-inv-item-price').value) || 0;
       const prod = stock.find(s => s.id === prodId);
       if (!prod || qty <= 0) return alert("خطأ في البيانات");
+      if (price < 0) return alert("⚠️ لا يمكن أن يكون السعر سالبًا");
 
       const invType = document.getElementById('acc-inv-type').value;
       if (invType === 'SALE') {
@@ -1859,6 +2051,16 @@
       const date = document.getElementById('acc-inv-date').value || todayStr;
       if (!party || tempAccCartItems.length === 0) return alert("أكمل البيانات");
 
+      // نثبّت تكلفة كل صنف وقت البيع فعليًا (نفس المنطق المستخدم بصفحة الفواتير)
+      if (invType === 'SALE') {
+        tempAccCartItems.forEach(item => {
+          if (item.unitCost === undefined || item.unitCost === null) {
+            const stItem = stock.find(s => s.id === item.prodId);
+            item.unitCost = stItem ? Number(stItem.cost) : 0;
+          }
+        });
+      }
+
       let subtotal = tempAccCartItems.reduce((s, i) => s + i.total, 0);
       let total = Math.max(0, subtotal - discount);
 
@@ -1888,10 +2090,10 @@
       }
 
       const accNotes = document.getElementById('acc-inv-notes').value.trim();
-      const { error } = await _supabase.from('invoices').insert([{ id: generateId(), type: invType, party, party_phone: partyPhone, items: tempAccCartItems, discount, total, paid, remaining: total - paid, date, notes: accNotes, created_by: currentUser.username, sold_by: currentUser.username, created_at: new Date().toISOString() }]);
+      const { error } = await _supabase.from('invoices').insert([{ id: generateId(), invoice_number: generateInvoiceNumber(invType), type: invType, party, party_phone: partyPhone, items: tempAccCartItems, discount, total, paid, remaining: total - paid, date, notes: accNotes, created_by: currentUser.username, sold_by: currentUser.username, created_at: new Date().toISOString() }]);
       if (error) { alert('❌ فشل حفظ الفاتورة: ' + error.message); return; }
       await logAction(`إصدار فاتورة من الحسابات (${invType === 'SALE' ? 'مبيعات' : 'مشتريات'}) لـ ${party} بقيمة ${total}`);
-      alert("تم حفظ الفاتورة بنجاح في الحسابات!");
+      alert("✅ تم حفظ الفاتورة بنجاح في الحسابات!");
       toggleElement('add-acc-inv-form');
       await loadDataFromSupabase();
       for (let pid of touchedIds) { await recalcProductCostFromPurchases(pid); }
@@ -1932,10 +2134,35 @@
       await loadDataFromSupabase();
     }
 
+    let isDeletingInvoice = false;
     function deleteInvoice(id) {
       const inv = invoices.find(i => i.id === id);
       if (!inv || !canEditDeleteInvoice(inv)) { alert('🚫 لا تملك صلاحية حذف هذه الفاتورة'); return; }
+      // لا نسمح بحذف فاتورة عليها دفعات مسجّلة، لأن حذفها يخلي تلك الدفعات معلّقة بلا فاتورة
+      const linkedPayments = payments.filter(p => p.invoice_id === id);
+      if (linkedPayments.length > 0) {
+        const totalPaid = linkedPayments.reduce((s, p) => s + Number(p.amount), 0);
+        alert(`🚫 لا يمكن حذف هذه الفاتورة لوجود ${linkedPayments.length} دفعة مسجّلة عليها بقيمة ${totalPaid.toFixed(2)} ر.س. لا يمكن حذف الفاتورة طالما فيها دفعات مسجّلة.`);
+        return;
+      }
       confirmAction("حذف هذه الفاتورة؟ سيتم إرجاع الكميات المتأثرة بالمخزون تلقائيًا.", async () => {
+        if (isDeletingInvoice) return;
+        isDeletingInvoice = true;
+        try {
+        // تحقق أولاً: لا نسمح بحذف فاتورة مشتريات لو جزء من كميتها تم بيعه بالفعل
+        // (لأن حذفها سيجعل المخزون سالبًا، وهذا وضع غير منطقي فعليًا)
+        // نجمع الكمية الكلية لكل صنف بالفاتورة أولاً (تحسبًا لتكرار نفس الصنف بأكثر من سطر)
+        if (inv.type === 'PURCHASE' && inv.items) {
+          const qtyByProd = {};
+          inv.items.forEach(item => { qtyByProd[item.prodId] = (qtyByProd[item.prodId] || 0) + Number(item.qty); });
+          for (const pid in qtyByProd) {
+            const p = stock.find(s => s.id === Number(pid));
+            if (p && (Number(p.qty) - qtyByProd[pid]) < 0) {
+              alert(`🚫 لا يمكن حذف هذه الفاتورة: جزء من كمية "${p.name}" تم بيعه بالفعل، وحذفها سيجعل المخزون سالبًا. المتوفر حاليًا: ${p.qty}، والمطلوب إرجاعه: ${qtyByProd[pid]}.`);
+              return;
+            }
+          }
+        }
         const touchedIds = new Set((inv.items || []).map(it => it.prodId));
         if (inv.items) {
           for (let item of inv.items) {
@@ -1953,6 +2180,10 @@
         await loadDataFromSupabase();
         for (let pid of touchedIds) { await recalcProductCostFromPurchases(pid); }
         await loadDataFromSupabase();
+        alert('✅ تم حذف الفاتورة');
+        } finally {
+          isDeletingInvoice = false;
+        }
       });
     }
 
@@ -1965,6 +2196,7 @@
         }
         await logAction(`حذف حساب: ${party} وجميع فواتيره (${targetInvoices.length} فاتورة)`);
         await loadDataFromSupabase();
+        alert('✅ تم حذف الحساب وكل فواتيره');
       });
     }
 
@@ -1995,8 +2227,23 @@
       if (partyInvoices.length === 0) {
         listEl.innerHTML = '<div class="empty-hint">لا توجد فواتير متبقية على هذا الحساب ✅</div>';
       } else {
-        listEl.innerHTML = `<div style="font-weight:900; margin-bottom:8px; color:var(--danger); text-align:center; font-size:1rem;">إجمالي المتبقي: ${totalRemaining.toFixed(2)} ر.س</div>` +
-          partyInvoices.map(inv => `<div class="invoice-items-line" style="margin-bottom:4px;">🧾 فاتورة ${invoiceNumber(inv)} — متبقي ${Number(inv.remaining).toFixed(2)} ر.س (${inv.date})</div>`).join('');
+        listEl.innerHTML = `<div style="font-weight:900; margin-bottom:10px; color:var(--danger); text-align:center; font-size:1rem;">إجمالي المتبقي: ${totalRemaining.toFixed(2)} ر.س</div>` +
+          partyInvoices.map(inv => {
+            const itemsLine = (inv.items || []).map(it => `${it.prodName} — ${it.qty} × ${Number(it.price).toFixed(2)} ر.س`).join('<br>');
+            return `<div style="background:#F9F7F2; border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px; text-align:right;">
+              <div style="font-weight:900; color:var(--primary); margin-bottom:4px;">🧾 فاتورة ${invoiceNumber(inv)} — ${inv.date}</div>
+              <div style="font-size:0.82rem; color:var(--muted); margin-bottom:6px;">${itemsLine}</div>
+              <div style="font-size:0.82rem; display:flex; flex-wrap:wrap; gap:6px;">
+                <span class="pill pill-total">الإجمالي: ${Number(inv.total).toFixed(2)} ر.س</span>
+                <span class="pill pill-paid">المدفوع: ${Number(inv.paid).toFixed(2)} ر.س</span>
+                <span class="pill pill-remaining">المتبقي: ${Number(inv.remaining).toFixed(2)} ر.س</span>
+              </div>
+              <div class="invoice-export-row" style="margin-top:8px;">
+                <button class="btn-pdf" onclick="exportInvoicePDF(${inv.id})">📄 PDF</button>
+                <button class="btn-whatsapp" onclick="shareInvoiceWhatsapp(${inv.id})">💬 واتساب</button>
+              </div>
+            </div>`;
+          }).join('');
       }
 
       const partyPayments = payments.filter(p => p.party === payingParty)
@@ -2009,9 +2256,13 @@
       }
     }
 
+    let isSubmittingPayment = false;
     async function submitAccountPayment() {
       if (!requireAdmin()) return;
       if (!payingParty) return;
+      if (isSubmittingPayment) return;
+      isSubmittingPayment = true;
+      try {
       const amount = parseFloat(document.getElementById('pay-amount-input').value) || 0;
       const date = document.getElementById('pay-date-input').value || todayStr;
       const note = document.getElementById('pay-note-input').value.trim();
@@ -2043,6 +2294,9 @@
       await loadDataFromSupabase();
       renderAccountPaymentModal();
       alert('✅ تم تسجيل الدفعة بنجاح');
+      } finally {
+        isSubmittingPayment = false;
+      }
     }
 
     function rebuildAccounts() {
@@ -2055,11 +2309,52 @@
       });
     }
 
-    // ترقيم الفواتير بصيغة S-1001 / P-1001
+    // نظام ترقيم احترافي: رقم ثابت يُحفظ مع كل فاتورة عند إنشائها ولا يتغيّر أبدًا بعد ذلك
+    // (حتى لو انحذفت فواتير ثانية)، بصيغة S-000001 للمبيعات و P-000001 للمشتريات
     function invoiceNumber(inv) {
+      if (inv.invoice_number) return inv.invoice_number;
+      // احتياطي مؤقت فقط لفاتورة لسا ما انحسب لها رقم ثابت (حالة نادرة جدًا)
       const sameType = invoices.filter(i => i.type === inv.type).slice().sort((a, b) => a.id - b.id);
       const idx = sameType.findIndex(i => i.id === inv.id);
-      return `${idx + 1}`;
+      const prefix = inv.type === 'SALE' ? 'S' : 'P';
+      return `${prefix}-${String(idx + 1).padStart(6, '0')}`;
+    }
+
+    function generateInvoiceNumber(type) {
+      const prefix = type === 'SALE' ? 'S' : 'P';
+      let maxNum = 0;
+      invoices.filter(i => i.type === type).forEach(inv => {
+        if (inv.invoice_number) {
+          const m = /^[SP]-(\d+)$/.exec(inv.invoice_number);
+          if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+        }
+      });
+      return `${prefix}-${String(maxNum + 1).padStart(6, '0')}`;
+    }
+
+    // يعطي رقمًا ثابتًا لأي فاتورة قديمة ما عندها رقم محفوظ بعد، ويحفظه بشكل دائم
+    async function backfillInvoiceNumbers() {
+      const missing = invoices.filter(inv => !inv.invoice_number);
+      if (missing.length === 0) return;
+      for (const type of ['SALE', 'PURCHASE']) {
+        const prefix = type === 'SALE' ? 'S' : 'P';
+        const sameType = invoices.filter(i => i.type === type).slice().sort((a, b) => a.id - b.id);
+        let maxNum = 0;
+        sameType.forEach(inv => {
+          if (inv.invoice_number) {
+            const m = /^[SP]-(\d+)$/.exec(inv.invoice_number);
+            if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+          }
+        });
+        for (const inv of sameType) {
+          if (!inv.invoice_number) {
+            maxNum += 1;
+            const newNum = `${prefix}-${String(maxNum).padStart(6, '0')}`;
+            inv.invoice_number = newNum;
+            await _supabase.from('invoices').update({ invoice_number: newNum }).eq('id', inv.id);
+          }
+        }
+      }
     }
 
     function formatHijriDate(dateStr) {
@@ -2085,6 +2380,8 @@
       const rem = Number(inv.remaining);
 
       let text = `🌴 *${typeTitle}* 🌴\n\n`;
+      if (appSettingsRow && appSettingsRow.app_company_name) text += `🏢 *${appSettingsRow.app_company_name}*\n`;
+      if (appSettingsRow && appSettingsRow.app_cr_number) text += `📋 س.ت: ${appSettingsRow.app_cr_number}\n`;
       text += `📄 *رقم الفاتورة:* ${invNum}\n`;
       text += `📅 *التاريخ:* ${hijriDate}\n`;
       if (timeStr) text += `⏰ *الوقت:* ${timeStr}\n`;
@@ -2203,6 +2500,8 @@
       if (!inv) return;
       const invNum = invoiceNumber(inv);
       const storeName = (appSettingsRow && appSettingsRow.app_name) || '🌴 نواة التمر';
+      const storeCompanyName = appSettingsRow && appSettingsRow.app_company_name;
+      const storeCrNumber = appSettingsRow && appSettingsRow.app_cr_number;
       const storeAddress = appSettingsRow && appSettingsRow.app_address;
       const storePhone = appSettingsRow && appSettingsRow.app_phone;
       const storeEmail = appSettingsRow && appSettingsRow.app_email;
@@ -2234,6 +2533,8 @@
       container.innerHTML = `
         <div style="text-align:center; margin-bottom:16px;">
           <h1 style="color:#54331A; font-size:1.8rem; margin:0 0 6px 0;">🌴 ${storeName.replace('🌴','').trim()} 🌴</h1>
+          ${storeCompanyName ? `<p style="color:#54331A; margin:2px 0; font-size:0.95rem; font-weight:800;">${storeCompanyName}</p>` : ''}
+          ${storeCrNumber ? `<p style="color:#78716C; margin:2px 0; font-size:0.82rem;">س.ت: ${storeCrNumber}</p>` : ''}
           ${storeAddress ? `<p style="color:#78716C; margin:2px 0; font-size:0.9rem;">📍 ${storeAddress}</p>` : ''}
           <p style="color:#78716C; margin:2px 0; font-size:0.85rem;">${storeEmail ? '📧 ' + storeEmail + '  ' : ''}${storePhone ? '📞 ' + storePhone : ''}</p>
           ${storeWebsite ? `<p style="color:#78716C; margin:2px 0; font-size:0.85rem;">🌐 ${storeWebsite}</p>` : ''}
@@ -2277,31 +2578,59 @@
       exportContainerAsPDF(container, `فاتورة-${invNum}.pdf`);
     }
 
+    let isSavingExpense = false;
     async function addExpense() {
       if (!requireAdmin()) return;
+      if (isSavingExpense) return;
+      isSavingExpense = true;
+      try {
       const title = document.getElementById('exp-title').value.trim();
       const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
       const date = document.getElementById('exp-date').value || todayStr;
       if (!title || amount <= 0) return alert("أدخل بيانات المصروف");
-      await _supabase.from('expenses').insert([{ id: generateId(), title, amount, date }]);
+      const { error } = await _supabase.from('expenses').insert([{ id: generateId(), title, amount, date }]);
+      if (error) { alert('❌ فشل حفظ المصروف: ' + error.message); return; }
       await logAction(`تسجيل مصروف: ${title} (${amount})`);
+      document.getElementById('exp-title').value = '';
+      document.getElementById('exp-amount').value = '';
       await loadDataFromSupabase();
+      alert('✅ تم حفظ المصروف بنجاح');
+      } finally {
+        isSavingExpense = false;
+      }
     }
 
     function deleteExpense(id) {
       if (!requireAdmin()) return;
       confirmAction("حذف هذا المصروف؟", async () => {
-        await _supabase.from('expenses').delete().eq('id', id);
+        const { error } = await _supabase.from('expenses').delete().eq('id', id);
+        if (error) { alert('❌ فشل حذف المصروف: ' + error.message); return; }
         await logAction(`حذف مصروف ID: ${id}`);
         await loadDataFromSupabase();
+        alert('✅ تم حذف المصروف');
       });
     }
 
     function populateReportFilters() {
       const select = document.getElementById('report-filter-product');
       if (!select) return;
+      const previousValue = select.value;
       select.innerHTML = '<option value="all">كل الأصناف</option>';
       stock.forEach(s => { select.innerHTML += `<option value="${s.name}">${s.name}</option>`; });
+      if (previousValue && Array.from(select.options).some(o => o.value === previousValue)) {
+        select.value = previousValue;
+      }
+
+      const datalist = document.getElementById('report-party-suggestions');
+      if (datalist) {
+        const names = new Set();
+        invoices.forEach(inv => {
+          if (inv.party) names.add(inv.party);
+          if (inv.created_by) names.add(inv.created_by);
+          if (inv.sold_by) names.add(inv.sold_by);
+        });
+        datalist.innerHTML = Array.from(names).sort().map(n => `<option value="${n}"></option>`).join('');
+      }
     }
 
     function getDateRange(periodType) {
@@ -2382,21 +2711,35 @@
       let sales = filteredInvoices.filter(i => i.type === 'SALE').reduce((s, i) => s + Number(i.total), 0);
       let purchases = filteredInvoices.filter(i => i.type === 'PURCHASE').reduce((s, i) => s + Number(i.total), 0);
       let totalExp = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
+
+      // "المحصّل" الفعلي = الدفعات اللاحقة المسجّلة بجدول الدفعات + الجزء المدفوع وقت إنشاء كل فاتورة
+      // (لأن الفاتورة المدفوعة بالكامل من البداية ما ينشأ لها سجل بجدول الدفعات، فتضيع من الحساب لو اعتمدنا على الجدول فقط)
       let totalCollected = filteredPayments.reduce((s, p) => s + Number(p.amount), 0);
+      filteredInvoices.forEach(inv => {
+        const paymentsForInv = payments.filter(p => p.invoice_id === inv.id).reduce((s, p) => s + Number(p.amount), 0);
+        const initialPaid = Math.max(0, Number(inv.paid) - paymentsForInv);
+        totalCollected += initialPaid;
+      });
 
       let cogs = 0;
       filteredInvoices.filter(i => i.type === 'SALE').forEach(inv => {
         if (inv.items) {
           inv.items.forEach(it => {
-            const stItem = stock.find(s => s.id === it.prodId);
-            const unitCost = stItem ? Number(stItem.cost) : 0;
+            let unitCost;
+            if (it.unitCost !== undefined && it.unitCost !== null) {
+              unitCost = Number(it.unitCost);
+            } else {
+              const stItem = stock.find(s => s.id === it.prodId);
+              unitCost = stItem ? Number(stItem.cost) : 0;
+            }
             cogs += (unitCost * Number(it.qty));
           });
         }
       });
 
       let grossProfit = sales - cogs;
-      let netProfit = grossProfit - totalExp;
+      const applicableExp = partySearch ? 0 : totalExp;
+      let netProfit = grossProfit - applicableExp;
 
       // تحليل المبيعات حسب الصنف (بالكرتون): الكمية، متوسط السعر، أعلى وأقل سعر
       const productBreakdown = {};
@@ -2434,13 +2777,13 @@
           <div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">📈 المبيعات</span></div><strong class="num-sales">${sales.toFixed(2)} ر.س</strong></div>
           <div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">📉 المشتريات</span></div><strong class="num-purchases">${purchases.toFixed(2)} ر.س</strong></div>
           <div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">📦 تكلفة البضاعة</span></div><strong style="color:#7C2D12;">${cogs.toFixed(2)} ر.س</strong></div>
-          <div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">💸 المصروفات</span></div><strong class="num-expenses">${totalExp.toFixed(2)} ر.س</strong></div>
+          ${partySearch ? '' : `<div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">💸 المصروفات</span></div><strong class="num-expenses">${totalExp.toFixed(2)} ر.س</strong></div>`}
           <div class="stat-box" style="cursor:default; grid-column:1 / -1;"><div class="stat-head"><span class="lbl">💵 المحصّل (دفعات) خلال الفترة</span></div><strong style="color:#15803D;">${totalCollected.toFixed(2)} ر.س</strong></div>
         </div>
-        <div style="background:linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, #000) 100%); color:#fff; text-align:center; padding:18px; border-radius:18px; margin-top:10px; box-shadow:0 8px 20px rgba(0,0,0,0.18);">
+        <div class="fin-box" style="background:linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, #000) 100%); color:#fff; text-align:center; padding:18px; border-radius:18px; margin-top:10px; box-shadow:0 8px 20px rgba(0,0,0,0.18);">
           <div style="font-size:0.85rem; opacity:0.85; font-weight:700;">💰 صافي الربح الفعلي</div>
           <div style="font-size:1.7rem; font-weight:900; margin:4px 0;">${netProfit.toFixed(2)} ر.س</div>
-          <div style="font-size:0.72rem; opacity:0.65;">إجمالي الربح ${grossProfit.toFixed(2)} ر.س − المصروفات ${totalExp.toFixed(2)} ر.س</div>
+          <div style="font-size:0.72rem; opacity:0.65;">${partySearch ? `إجمالي الربح ${grossProfit.toFixed(2)} ر.س (بدون خصم مصروفات عامة أثناء البحث باسم)` : `إجمالي الربح ${grossProfit.toFixed(2)} ر.س − المصروفات ${totalExp.toFixed(2)} ر.س`}</div>
         </div>
         ${productRows ? `<div style="margin-top:16px;">
           <h4 style="color:var(--primary); text-align:center; margin-bottom:8px;">📦 تفصيل حسب الصنف</h4>
@@ -2479,8 +2822,13 @@
           if (inv.type === 'SALE') {
             qtySold += Number(it.qty);
             saleAmount += Number(it.total);
-            const stItem = stock.find(s => s.id === it.prodId);
-            const unitCost = stItem ? Number(stItem.cost) : 0;
+            let unitCost;
+            if (it.unitCost !== undefined && it.unitCost !== null) {
+              unitCost = Number(it.unitCost);
+            } else {
+              const stItem = stock.find(s => s.id === it.prodId);
+              unitCost = stItem ? Number(stItem.cost) : 0;
+            }
             cogs += unitCost * Number(it.qty);
           } else {
             qtyPurchased += Number(it.qty);
@@ -2504,7 +2852,7 @@
           <div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">📦 تكلفة البضاعة المباعة</span></div><strong style="color:#7C2D12;">${cogs.toFixed(2)} ر.س</strong></div>
           <div class="stat-box" style="cursor:default;"><div class="stat-head"><span class="lbl">📦 المخزون الحالي</span></div><strong style="color:#7C2D12;">${currentQty !== null ? currentQty.toFixed(2) + ' كرتون' : '—'}</strong></div>
         </div>
-        <div style="background:linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, #000) 100%); color:#fff; text-align:center; padding:18px; border-radius:18px; margin-top:10px; box-shadow:0 8px 20px rgba(0,0,0,0.18);">
+        <div class="fin-box" style="background:linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, #000) 100%); color:#fff; text-align:center; padding:18px; border-radius:18px; margin-top:10px; box-shadow:0 8px 20px rgba(0,0,0,0.18);">
           <div style="font-size:0.85rem; opacity:0.85; font-weight:700;">💰 ربح هذا الصنف</div>
           <div style="font-size:1.7rem; font-weight:900; margin:4px 0;">${profit.toFixed(2)} ر.س</div>
           <div style="font-size:0.72rem; opacity:0.65;">مبيعات الصنف ${saleAmount.toFixed(2)} ر.س − تكلفته ${cogs.toFixed(2)} ر.س</div>
@@ -2625,6 +2973,18 @@
       });
     }
 
+    function toggleFinancialVisibility() {
+      financialsHidden = !financialsHidden;
+      document.body.classList.toggle('hide-financials', financialsHidden);
+      const btn = document.getElementById('fin-toggle-btn');
+      if (btn) btn.innerText = financialsHidden ? '🙈' : '👁️';
+    }
+
+    function dismissLowStockAlert() {
+      dismissedLowStockAlert = true;
+      renderAll();
+    }
+
     function renderAll() {
       updateInvCreateCardVisibility();
       let stContainer = document.getElementById('stock-container');
@@ -2641,7 +3001,7 @@
       let stockGridHtml = `<div class="stock-grid">`;
       stock.forEach(s => {
         stockVal += (Number(s.qty) * Number(s.cost));
-        if (Number(s.qty) <= 5) lowStockItems.push(s.name);
+        if (Number(s.qty) <= lowStockThreshold) lowStockItems.push(s.name);
 
         stockGridHtml += `<div class="stock-card-mini">
           <div>
@@ -2661,8 +3021,11 @@
       if(stContainer) stContainer.innerHTML = stockGridHtml;
 
       if (alertBox) {
-        if (lowStockItems.length > 0) {
-          alertBox.innerHTML = `<div class="alert-banner">⚠️ تنبيه: الأصناف التالية قاربت على النفاد (5 أو أقل): <strong>${lowStockItems.join(', ')}</strong></div>`;
+        if (lowStockItems.length > 0 && !dismissedLowStockAlert) {
+          alertBox.innerHTML = `<div class="alert-banner" style="justify-content:space-between;">
+            <span>⚠️ تنبيه: الأصناف التالية قاربت على النفاد (${lowStockThreshold} أو أقل): <strong>${lowStockItems.join(', ')}</strong></span>
+            <button onclick="dismissLowStockAlert()" title="تم الاطلاع" style="background:none; border:none; color:inherit; font-weight:900; font-size:1.1rem; cursor:pointer; width:auto; padding:0 4px; flex-shrink:0;">✕</button>
+          </div>`;
         } else {
           alertBox.innerHTML = '';
         }
@@ -2735,7 +3098,7 @@
         const isUnsettled = Math.abs(acc.remaining) > 0.009;
         if (isUnsettled && (!searchAcc || p.toLowerCase().includes(searchAcc))) {
           const totalLabel = acc.type === 'CUSTOMER' ? 'إجمالي مشترياته' : 'إجمالي مشترياتنا';
-          const remLabel = acc.type === 'CUSTOMER' ? 'متبقي عليه لك' : 'متبقي لك عليه';
+          const remLabel = acc.type === 'CUSTOMER' ? 'متبقي عليه' : 'متبقي له';
           const safeP = p.replace(/'/g, "\\'");
           let html = `<div class="account-card">
             <div class="account-card-top">
@@ -2779,8 +3142,14 @@
       invoices.filter(i => i.type === 'SALE').forEach(inv => {
         if (inv.items) {
           inv.items.forEach(it => {
-            const stItem = stock.find(s => s.id === it.prodId);
-            totalCogs += ((stItem ? Number(stItem.cost) : 0) * Number(it.qty));
+            let unitCost;
+            if (it.unitCost !== undefined && it.unitCost !== null) {
+              unitCost = Number(it.unitCost);
+            } else {
+              const stItem = stock.find(s => s.id === it.prodId);
+              unitCost = stItem ? Number(stItem.cost) : 0;
+            }
+            totalCogs += (unitCost * Number(it.qty));
           });
         }
       });
